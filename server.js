@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken');
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
@@ -10,30 +11,22 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 
-// Session middleware (TODO: Replace with JWT)
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: false,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
-
 // TODO: Create JWT middleware to replace session auth
 function requireAuth(req, res, next) {
-    if (req.session && req.session.userId) {
-        req.user = {
-            id: req.session.userId,
-            name: req.session.userName,
-            email: req.session.userEmail
-        };
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; 
+
+    if (!token) {
+        return res.status(401).json({ error: 'Authentication required. Please log in.' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        req.user = decoded; 
         next();
-    } else {
-        res.status(401).json({ 
-            error: 'Authentication required. Please log in.' 
-        });
+    } catch (err) {
+        return res.status(403).json({ error: 'Invalid or expired token' });
     }
 }
 
@@ -88,7 +81,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// POST /api/login - User login (TODO: Replace with JWT)
+// POST /api/login - User login (Replaced with JWT)
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -103,18 +96,27 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
         
-        // Create session (TODO: Replace with JWT)
-        req.session.userId = user.id;
-        req.session.userName = user.name;
-        req.session.userEmail = user.email;
+        // Generate JWT token
+        const token = jwt.sign(
+            {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role 
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN }
+        );
         
         res.json({
             message: 'Login successful',
             user: {
                 id: user.id,
                 name: user.name,
-                email: user.email
-            }
+                email: user.email,
+                role: user.role
+            },
+            token 
         });
         
     } catch (error) {
